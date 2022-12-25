@@ -294,7 +294,7 @@ Rectangle {
                                 if (persistentSettings.allow_p2pool_mining) {
                                     if (p2poolManager.isInstalled()) {
                                         var args = daemonManager.getArgs(persistentSettings.blockchainDataDir) //updates arguments
-                                        if (persistentSettings.allowRemoteNodeMining || (args.includes("--zmq-pub tcp://127.0.0.1:18083") && args.includes("--disable-dns-checkpoints"))) {
+                                        if (persistentSettings.allowRemoteNodeMining || (args.includes("--zmq-pub tcp://127.0.0.1:18083") || args.includes("--zmq-pub=tcp://127.0.0.1:18083")) && args.includes("--disable-dns-checkpoints") && !args.includes("--no-zmq")) {
                                             startP2Pool()
                                         }
                                         else {
@@ -589,23 +589,47 @@ Rectangle {
         if (!underSystemd) {
             var noSync = false;
             var customDaemonArgs = daemonManager.getArgs(persistentSettings.blockchainDataDir);
-            var daemonArgs = "--zmq-pub " + "tcp://127.0.0.1:18083 " + "--disable-dns-checkpoints "
-
-            if (customDaemonArgs.includes("--zmq-pub")) {
-                var customDaemonArgsArray = customDaemonArgs.split(' ');
-                customDaemonArgsArray = customDaemonArgsArray.splice(customDaemonArgsArray.indexOf("--zmq-pub") + 1);
-                customDaemonArgs = customDaemonArgsArray.join(' ');
-                customDaemonArgs.replace(" --zmq-pub", '');
+            //these args will be deleted because DaemonManager::start will re-add them later.
+            //--no-zmq must be deleted. removing '--zmq-pub=tcp...' lets us blindly add '--zmq-pub tcp...' later without risking duplication.
+            var defaultArgs = ["--detach","--data-dir","--bootstrap-daemon-address","--prune-blockchain","--no-sync","--check-updates","--non-interactive","--max-concurrency","--no-zmq","--zmq-pub=tcp://127.0.0.1:18083"]
+            var customDaemonArgsArray = customDaemonArgs.split(' ');
+            var flag = "";
+            var allArgs = [];
+            var p2poolArgs = ["--zmq-pub tcp://127.0.0.1:18083","--disable-dns-checkpoints"];
+            var daemonArgs = "";
+            //create an array (allArgs) of ['--arg value','--arg2','--arg3']
+            for (let i = 0; i < customDaemonArgsArray.length; i++) {
+                if(!customDaemonArgsArray[i].startsWith("--")) {
+                    flag += " " + customDaemonArgsArray[i]
+                } else {
+                    if(flag){
+                        allArgs.push(flag)
+                    }
+                    flag = customDaemonArgsArray[i]
+                }
             }
-            if (customDaemonArgs.includes("--disable-dns-checkpoints")) {
-                daemonArgs.replace("--disable-dns-checkpoints ", '');
+            allArgs.push(flag)
+            //pop from allArgs if value is inside the deleteme array (defaultArgs)
+            for (let n = (defaultArgs.length - 1); n >= 0; n--) {
+                for (let i = (allArgs.length - 1); i >= 0; i--) {
+                    if(allArgs[i].includes(defaultArgs[n])) {
+                        allArgs.splice(i,1)
+                        defaultArgs.splice(n,1)
+                        if(i==0) {
+                            break
+                        }
+                        i-=1
+                    }
+                }
             }
-            if (customDaemonArgs.includes("--no-zmq")) {
-                customDaemonArgs.replace(" --no-zmq", '');
+            //append required p2pool flags
+            for (let i = 0; i < p2poolArgs.length; i++) {
+                if(!allArgs.includes(p2poolArgs[i])) {
+                    allArgs.push(p2poolArgs[i])
+                    continue
+                }
             }
-            daemonArgs += customDaemonArgs;
-
-            var success = daemonManager.start(daemonArgs, persistentSettings.nettype, persistentSettings.blockchainDataDir, persistentSettings.bootstrapNodeAddress, noSync, persistentSettings.pruneBlockchain)
+            var success = daemonManager.start(allArgs.join(" "), persistentSettings.nettype, persistentSettings.blockchainDataDir, persistentSettings.bootstrapNodeAddress, noSync, persistentSettings.pruneBlockchain)
             if (success) {
                 startP2Pool()
             }
