@@ -298,7 +298,13 @@ Rectangle {
                                             startP2Pool()
                                         }
                                         else {
-                                            daemonManager.stopAsync(persistentSettings.nettype, persistentSettings.blockchainDataDir, startP2PoolLocal)
+                                            var underSystemd = daemonManager.checkUnderSystemd();
+                                            if (underSystemd) {
+                                                miningError(qsTr("Monerod is managed by Systemd. Manually add --zmq-pub tcp://127.0.0.1:18083 --disable-dns-checkpoints to the unit file <br>") + translationManager.emptyString)
+                                            }
+                                            else {
+                                                daemonManager.stopAsync(persistentSettings.nettype, persistentSettings.blockchainDataDir, startP2PoolLocal)
+                                            }
                                         }
                                     }
                                     else {
@@ -585,60 +591,54 @@ Rectangle {
     }
 
     function startP2PoolLocal() {
-        var underSystemd = daemonManager.checkUnderSystemd();
-        if (!underSystemd) {
-            var noSync = false;
-            var customDaemonArgs = daemonManager.getArgs(persistentSettings.blockchainDataDir);
-            //these args will be deleted because DaemonManager::start will re-add them later.
-            //--no-zmq must be deleted. removing '--zmq-pub=tcp...' lets us blindly add '--zmq-pub tcp...' later without risking duplication.
-            var defaultArgs = ["--detach","--data-dir","--bootstrap-daemon-address","--prune-blockchain","--no-sync","--check-updates","--non-interactive","--max-concurrency","--no-zmq","--zmq-pub=tcp://127.0.0.1:18083"]
-            var customDaemonArgsArray = customDaemonArgs.split(' ');
-            var flag = "";
-            var allArgs = [];
-            var p2poolArgs = ["--zmq-pub tcp://127.0.0.1:18083","--disable-dns-checkpoints"];
-            var daemonArgs = "";
-            //create an array (allArgs) of ['--arg value','--arg2','--arg3']
-            for (let i = 0; i < customDaemonArgsArray.length; i++) {
-                if(!customDaemonArgsArray[i].startsWith("--")) {
-                    flag += " " + customDaemonArgsArray[i]
-                } else {
-                    if(flag){
-                        allArgs.push(flag)
-                    }
-                    flag = customDaemonArgsArray[i]
+        var noSync = false;
+        var customDaemonArgs = daemonManager.getArgs(persistentSettings.blockchainDataDir);
+        //these args will be deleted because DaemonManager::start will re-add them later.
+        //--no-zmq must be deleted. removing '--zmq-pub=tcp...' lets us blindly add '--zmq-pub tcp...' later without risking duplication.
+        var defaultArgs = ["--detach","--data-dir","--bootstrap-daemon-address","--prune-blockchain","--no-sync","--check-updates","--non-interactive","--max-concurrency","--no-zmq","--zmq-pub=tcp://127.0.0.1:18083"]
+        var customDaemonArgsArray = customDaemonArgs.split(' ');
+        var flag = "";
+        var allArgs = [];
+        var p2poolArgs = ["--zmq-pub tcp://127.0.0.1:18083","--disable-dns-checkpoints"];
+        var daemonArgs = "";
+        //create an array (allArgs) of ['--arg value','--arg2','--arg3']
+        for (let i = 0; i < customDaemonArgsArray.length; i++) {
+            if(!customDaemonArgsArray[i].startsWith("--")) {
+                flag += " " + customDaemonArgsArray[i]
+            } else {
+                if(flag){
+                    allArgs.push(flag)
                 }
-            }
-            allArgs.push(flag)
-            //pop from allArgs if value is inside the deleteme array (defaultArgs)
-            for (let n = (defaultArgs.length - 1); n >= 0; n--) {
-                for (let i = (allArgs.length - 1); i >= 0; i--) {
-                    if(allArgs[i].includes(defaultArgs[n])) {
-                        allArgs.splice(i,1)
-                        defaultArgs.splice(n,1)
-                        if(i==0) {
-                            break
-                        }
-                        i-=1
-                    }
-                }
-            }
-            //append required p2pool flags
-            for (let i = 0; i < p2poolArgs.length; i++) {
-                if(!allArgs.includes(p2poolArgs[i])) {
-                    allArgs.push(p2poolArgs[i])
-                    continue
-                }
-            }
-            var success = daemonManager.start(allArgs.join(" "), persistentSettings.nettype, persistentSettings.blockchainDataDir, persistentSettings.bootstrapNodeAddress, noSync, persistentSettings.pruneBlockchain)
-            if (success) {
-                startP2Pool()
-            }
-            else {
-                miningError(qsTr("Couldn't start mining.<br>") + translationManager.emptyString)
+                flag = customDaemonArgsArray[i]
             }
         }
+        allArgs.push(flag)
+        //pop from allArgs if value is inside the deleteme array (defaultArgs)
+        for (let n = (defaultArgs.length - 1); n >= 0; n--) {
+            for (let i = (allArgs.length - 1); i >= 0; i--) {
+                if(allArgs[i].includes(defaultArgs[n])) {
+                    allArgs.splice(i,1)
+                    defaultArgs.splice(n,1)
+                    if(i==0) {
+                        break
+                    }
+                    i-=1
+                }
+            }
+        }
+        //append required p2pool flags
+        for (let i = 0; i < p2poolArgs.length; i++) {
+            if(!allArgs.includes(p2poolArgs[i])) {
+                allArgs.push(p2poolArgs[i])
+                continue
+            }
+        }
+        var success = daemonManager.start(allArgs.join(" "), persistentSettings.nettype, persistentSettings.blockchainDataDir, persistentSettings.bootstrapNodeAddress, noSync, persistentSettings.pruneBlockchain)
+        if (success) {
+            startP2Pool()
+        }
         else {
-            miningError(qsTr("Monerod is managed by Systemd. Manually add --zmq-pub tcp://127.0.0.1:18083 --disable-dns-checkpoints to the unit file <br>") + translationManager.emptyString)
+            miningError(qsTr("Couldn't start mining.<br>") + translationManager.emptyString)
         }
     }
 

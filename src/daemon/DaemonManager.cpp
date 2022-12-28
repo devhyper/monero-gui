@@ -355,11 +355,15 @@ bool DaemonManager::checkUnderSystemd() {
         if (pid.isEmpty()) {
             return false;
         }
-        args.empty();
+        args.clear();
+
         args << "-c";
-        args << "\"ps -eo pid,cgroup | grep " + pid + " | grep -q .service$\"";
-        int underSystemd = QProcess::execute("/bin/sh", args);
-        if (underSystemd == 0) {
+        args << "ps -eo pid,cgroup | grep " + pid + " | grep -q .service$";
+        p.setProgram("sh");
+        p.setArguments(args);
+        p.start();
+        p.waitForFinished();
+        if (p.exitCode() == 0) {
             return true;
         }
     #endif
